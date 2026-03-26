@@ -32,3 +32,4 @@ microservices/evaluation-service/evaluation-service
 
 # Kubernetes Secrets (managed externally, not tracked in git)
 gitops/**/secret.yaml
+gitops/monitoring/newrelic-secret.yaml
