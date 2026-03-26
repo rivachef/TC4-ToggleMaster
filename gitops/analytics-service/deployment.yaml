@@ -7,6 +7,13 @@ data:
   PORT: "8005"
   AWS_DYNAMODB_TABLE: "ToggleMasterAnalytics"
   AWS_REGION: "us-east-1"
+  # OpenTelemetry Configuration
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317"
+  OTEL_SERVICE_NAME: "analytics-service"
+  OTEL_RESOURCE_ATTRIBUTES: "service.namespace=togglemaster,deployment.environment=production"
+  OTEL_TRACES_EXPORTER: "otlp"
+  OTEL_METRICS_EXPORTER: "otlp"
+  OTEL_LOGS_EXPORTER: "otlp"
 ---
 # Secret "analytics-service-secret" is managed externally (not tracked in git).
 # Apply manually: kubectl apply -f gitops/analytics-service/secret.yaml

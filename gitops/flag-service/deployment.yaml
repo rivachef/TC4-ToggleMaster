@@ -8,6 +8,13 @@ data:
   POSTGRES_USER: "tm_user"
   POSTGRES_DB: "flag_db"
   AUTH_SERVICE_URL: "http://auth-service:8001"
+  # OpenTelemetry Configuration
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317"
+  OTEL_SERVICE_NAME: "flag-service"
+  OTEL_RESOURCE_ATTRIBUTES: "service.namespace=togglemaster,deployment.environment=production"
+  OTEL_TRACES_EXPORTER: "otlp"
+  OTEL_METRICS_EXPORTER: "otlp"
+  OTEL_LOGS_EXPORTER: "otlp"
 ---
 # Secret "flag-service-secret" is managed externally (not tracked in git).
 # Apply manually: kubectl apply -f gitops/flag-service/secret.yaml

@@ -1,8 +1,8 @@
 package main
 
 import (
+	"context"
 	"database/sql"
-	// "fmt" // ADICIONADO PARA TESTE (não é usado em lugar nenhum)
 	"log"
 	"net/http"
 	"os"
@@ -21,6 +21,12 @@ type App struct {
 func main() {
 	// Carrega o .env para desenvolvimento local. Em produção, isso não fará nada.
 	_ = godotenv.Load()
+
+	// --- OpenTelemetry ---
+	ctx := context.Background()
+	shutdownTelemetry := initTelemetry(ctx, "auth-service")
+	defer shutdownTelemetry()
+	initOtelMetrics("auth-service")
 
 	// --- Configuração ---
 	port := os.Getenv("PORT")
@@ -46,8 +52,8 @@ func main() {
 	defer db.Close()
 
 	app := &App{
-		DB:         db,
-		MasterKey:  masterKey,
+		DB:        db,
+		MasterKey: masterKey,
 	}
 
 	// --- Rotas da API ---
@@ -61,8 +67,11 @@ func main() {
 	// Eles são protegidos pelo middleware de autenticação
 	mux.Handle("/admin/keys", app.masterKeyAuthMiddleware(http.HandlerFunc(app.createKeyHandler)))
 
-	log.Printf("Auth Service v1.1.0 rodando na porta %s", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	// Wrap all routes with OTel middleware
+	handler := otelMiddleware(mux)
+
+	log.Printf("Auth Service v2.0.0 rodando na porta %s (OTel enabled)", port)
+	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatal(err)
 	}
 }
