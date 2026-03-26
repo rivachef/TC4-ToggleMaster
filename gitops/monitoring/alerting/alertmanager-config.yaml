@@ -1,0 +1,77 @@
+# Alertmanager Configuration Secret
+# This configures alert routing to OpsGenie and Discord
+#
+# IMPORTANT: Copy this to alertmanager-secret.yaml and fill in your keys
+# DO NOT commit the actual secret to git
+#
+# Apply: kubectl apply -f gitops/monitoring/alerting/alertmanager-secret.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alertmanager-togglemaster
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: togglemaster
+type: Opaque
+stringData:
+  alertmanager.yaml: |
+    global:
+      resolve_timeout: 5m
+
+    route:
+      group_by: ['alertname', 'service']
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      receiver: 'togglemaster-default'
+
+      routes:
+        # Critical alerts -> OpsGenie + Discord + Self-Healing
+        - match:
+            severity: critical
+          receiver: 'togglemaster-critical'
+          continue: true
+
+        # Warning alerts -> Discord only
+        - match:
+            severity: warning
+          receiver: 'togglemaster-warning'
+
+    receivers:
+      - name: 'togglemaster-default'
+        webhook_configs:
+          - url: '<DISCORD_WEBHOOK_URL>'
+            send_resolved: true
+
+      - name: 'togglemaster-critical'
+        opsgenie_configs:
+          - api_key: '<OPSGENIE_API_KEY>'
+            message: '{{ .CommonAnnotations.summary }}'
+            description: '{{ .CommonAnnotations.description }}'
+            priority: P1
+            tags: 'togglemaster,critical,{{ .CommonLabels.service }}'
+        webhook_configs:
+          # Discord notification
+          - url: '<DISCORD_WEBHOOK_URL>'
+            send_resolved: true
+          # Self-Healing webhook (GitHub Actions repository_dispatch)
+          - url: 'https://api.github.com/repos/rivachef/TC4-ToggleMaster/dispatches'
+            http_config:
+              authorization:
+                type: Bearer
+                credentials: '<GITHUB_PAT_TOKEN>'
+            send_resolved: false
+            max_alerts: 1
+
+      - name: 'togglemaster-warning'
+        webhook_configs:
+          - url: '<DISCORD_WEBHOOK_URL>'
+            send_resolved: true
+
+    # Inhibit rules: critical silences warning for same alert
+    inhibit_rules:
+      - source_match:
+          severity: critical
+        target_match:
+          severity: warning
+        equal: ['alertname']
