@@ -53,5 +53,5 @@ EXPOSE 8005
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8005/health || exit 1
 
-# Comando final: gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8005", "app:app"]
+# Comando final: gunicorn com OTel auto-instrumentation
+CMD ["opentelemetry-instrument", "gunicorn", "--bind", "0.0.0.0:8005", "app:app"]

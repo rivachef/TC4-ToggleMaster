@@ -31,6 +31,12 @@ type App struct {
 func main() {
 	_ = godotenv.Load() // Carrega .env para dev local
 
+	// --- OpenTelemetry ---
+	otelCtx := context.Background()
+	shutdownTelemetry := initTelemetry(otelCtx, "evaluation-service")
+	defer shutdownTelemetry()
+	initOtelMetrics("evaluation-service")
+
 	// --- Configuração ---
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -115,8 +121,11 @@ func main() {
 	mux.HandleFunc("/health", app.healthHandler)
 	mux.HandleFunc("/evaluate", app.evaluationHandler)
 
-	log.Printf("Serviço de Avaliação (Go) rodando na porta %s", port)
-	if err := http.ListenAndServe(":"+port, mux); err != nil {
+	// Wrap all routes with OTel middleware
+	handler := otelMiddleware(mux)
+
+	log.Printf("Serviço de Avaliação (Go) v2.0.0 rodando na porta %s (OTel enabled)", port)
+	if err := http.ListenAndServe(":"+port, handler); err != nil {
 		log.Fatal(err)
 	}
 }

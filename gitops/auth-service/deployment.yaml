@@ -7,6 +7,10 @@ data:
   PORT: "8001"
   POSTGRES_USER: "tm_user"
   POSTGRES_DB: "auth_db"
+  # OpenTelemetry Configuration
+  OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317"
+  OTEL_SERVICE_NAME: "auth-service"
+  OTEL_RESOURCE_ATTRIBUTES: "service.namespace=togglemaster,deployment.environment=production"
 ---
 # Secret "auth-service-secret" is managed externally (not tracked in git).
 # Apply manually: kubectl apply -f gitops/auth-service/secret.yaml

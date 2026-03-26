@@ -8,6 +8,10 @@ data:
   FLAG_SERVICE_URL: "http://flag-service:8002"
   TARGETING_SERVICE_URL: "http://targeting-service:8003"
   AWS_REGION: "us-east-1"
+  # OpenTelemetry Configuration
+  OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317"
+  OTEL_SERVICE_NAME: "evaluation-service"
+  OTEL_RESOURCE_ATTRIBUTES: "service.namespace=togglemaster,deployment.environment=production"
 ---
 # Secret "evaluation-service-secret" is managed externally (not tracked in git).
 # Apply manually: kubectl apply -f gitops/evaluation-service/secret.yaml
