@@ -1,0 +1,190 @@
+services:
+  # -----------------------------------------------------------
+  # Localstack (SQS + DynamoDB) - ÚNICA instância
+  # -----------------------------------------------------------
+  localstack:
+    image: localstack/localstack:3.0
+    container_name: localstack
+    environment:
+      SERVICES: sqs,dynamodb
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./localstack-init.sh:/etc/localstack/init/ready.d/localstack-init.sh
+
+  # -----------------------------------------------------------
+  # Redis (para Evaluation Service)
+  # -----------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  # -----------------------------------------------------------
+  # Auth Service + banco PostgreSQL
+  # -----------------------------------------------------------
+  auth-db:
+    image: postgres:15
+    container_name: auth-db
+    environment:
+      POSTGRES_USER: tm_user
+      POSTGRES_PASSWORD: tm_pass_26
+      POSTGRES_DB: auth_db
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "tm_user", "-d", "auth_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - auth_data:/var/lib/postgresql/data
+      - ./auth-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5435:5432"
+
+  auth-service:
+    build: ./auth-service
+    image: rivachef/auth-service:1.0
+    container_name: auth-service
+    restart: always
+    depends_on:
+      - auth-db
+    environment:
+      PORT: 8001
+      MASTER_KEY: admin-secreto-123
+      DATABASE_URL: postgres://tm_user:tm_pass_26@auth-db:5432/auth_db
+    ports:
+      - "8001:8001"
+
+  # -----------------------------------------------------------
+  # Flag Service + PostgreSQL
+  # -----------------------------------------------------------
+  flag-db:
+    image: postgres:15
+    container_name: flag-db
+    environment:
+      POSTGRES_USER: tm_user
+      POSTGRES_PASSWORD: tm_pass_26
+      POSTGRES_DB: flags_db
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "tm_user", "-d", "flags_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - flag_data:/var/lib/postgresql/data
+      - ./flag-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5434:5432"
+
+  flag-service:
+    build: ./flag-service
+    image: rivachef/flag-service:1.0
+    container_name: flag-service
+    depends_on:
+      - flag-db
+      - auth-service
+    environment:
+      DATABASE_URL: postgres://tm_user:tm_pass_26@flag-db:5432/flags_db
+      AUTH_SERVICE_URL: http://auth-service:8001
+      PORT: 8002
+    ports:
+      - "8002:8002"
+
+  # -----------------------------------------------------------
+  # Targeting Service + PostgreSQL
+  # -----------------------------------------------------------
+  targeting-db:
+    image: postgres:15
+    container_name: targeting-db
+    environment:
+      POSTGRES_USER: tm_user
+      POSTGRES_PASSWORD: tm_pass_26
+      POSTGRES_DB: targeting_db
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "tm_user", "-d", "targeting_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - targeting_data:/var/lib/postgresql/data
+      - ./targeting-service/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5436:5432"
+
+  targeting-service:
+    build: ./targeting-service
+    image: rivachef/targeting-service:1.0
+    container_name: targeting-service
+    depends_on:
+      - targeting-db
+      - auth-service
+    environment:
+      PORT: 8003
+      DATABASE_URL: postgres://tm_user:tm_pass_26@targeting-db:5432/targeting_db
+      AUTH_SERVICE_URL: http://auth-service:8001
+    ports:
+      - "8003:8003"
+
+  # -----------------------------------------------------------
+  # Evaluation Service (Redis + SQS + Flag + Targeting)
+  # -----------------------------------------------------------
+  evaluation-service:
+    build: ./evaluation-service
+    image: rivachef/evaluation-service:1.0
+    container_name: evaluation-service
+    depends_on:
+      - redis
+      - localstack
+      - flag-service
+      - targeting-service
+    environment:
+      PORT: 8004
+      REDIS_URL: redis://redis:6379
+      FLAG_SERVICE_URL: http://flag-service:8002
+      TARGETING_SERVICE_URL: http://targeting-service:8003
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+      SERVICE_API_KEY: tm_key_6391eaa41739fda72e386cbbf1a54c6b8fa5c64908a5265e21303b37b429cf59
+      AWS_SQS_URL: http://localstack:4566/000000000000/evaluation-events
+      AWS_SQS_ENDPOINT: http://localstack:4566
+    ports:
+      - "8004:8004"
+
+  # -----------------------------------------------------------
+  # Analytics Service (DynamoDB + SQS)
+  # -----------------------------------------------------------
+  analytics-service:
+    build: ./analytics-service
+    image: rivachef/analytics-service:1.0
+    container_name: analytics-service
+    depends_on:
+      - localstack
+    environment:
+      PORT: 8005
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+
+      AWS_SQS_URL: http://localstack:4566/000000000000/evaluation-events
+      AWS_SQS_ENDPOINT: http://localstack:4566
+
+      AWS_DYNAMODB_TABLE: ToggleMasterAnalytics
+      AWS_DYNAMODB_ENDPOINT: http://localstack:4566
+
+    ports:
+      - "8005:8005"
+
+# -----------------------------------------------------------
+# Volumes
+# -----------------------------------------------------------
+volumes:
+  localstack_data:
+  auth_data:
+  flag_data:
+  targeting_data:
