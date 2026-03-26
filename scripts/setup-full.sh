@@ -30,7 +30,7 @@ echo ""
 ###############################################################################
 # Verificacoes iniciais
 ###############################################################################
-echo ">>> [0/8] Verificacoes iniciais..."
+echo ">>> [0/10] Verificacoes iniciais..."
 
 # AWS credentials (suporta env vars OU aws configure)
 if [ -z "$AWS_ACCESS_KEY_ID" ]; then
@@ -66,13 +66,13 @@ echo ""
 ###############################################################################
 # Step 1: Gerar secrets
 ###############################################################################
-echo ">>> [1/8] Gerando secrets a partir do Terraform..."
+echo ">>> [1/10] Gerando secrets a partir do Terraform..."
 "$SCRIPT_DIR/generate-secrets.sh"
 
 ###############################################################################
 # Step 2: Instalar ArgoCD
 ###############################################################################
-echo ">>> [2/8] Instalando ArgoCD..."
+echo ">>> [2/10] Instalando ArgoCD..."
 
 if kubectl get namespace argocd > /dev/null 2>&1; then
   echo "  ArgoCD namespace ja existe, pulando instalacao."
@@ -93,13 +93,13 @@ echo ""
 ###############################################################################
 # Step 3: Aplicar secrets no cluster
 ###############################################################################
-echo ">>> [3/8] Aplicando secrets no cluster..."
+echo ">>> [3/10] Aplicando secrets no cluster..."
 "$SCRIPT_DIR/apply-secrets.sh"
 
 ###############################################################################
 # Step 4: Build e push de imagens Docker no ECR
 ###############################################################################
-echo ">>> [4/8] Build e push de imagens Docker..."
+echo ">>> [4/10] Build e push de imagens Docker..."
 
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 ECR_REGISTRY="${ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com"
@@ -157,7 +157,7 @@ echo ""
 ###############################################################################
 # Step 5: Aplicar ArgoCD Applications
 ###############################################################################
-echo ">>> [5/8] Aplicando ArgoCD Applications..."
+echo ">>> [5/10] Aplicando ArgoCD Applications..."
 kubectl apply -f "$PROJECT_DIR/argocd/applications.yaml"
 echo "  [OK] Applications criadas"
 echo ""
@@ -165,7 +165,7 @@ echo ""
 ###############################################################################
 # Step 6: Instalar NGINX Ingress
 ###############################################################################
-echo ">>> [6/8] Instalando NGINX Ingress Controller..."
+echo ">>> [6/10] Instalando NGINX Ingress Controller..."
 kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.0/deploy/static/provider/aws/deploy.yaml 2>/dev/null || true
 echo "  [OK] NGINX Ingress instalado"
 echo ""
@@ -173,7 +173,7 @@ echo ""
 ###############################################################################
 # Step 7: Aguardar pods
 ###############################################################################
-echo ">>> [7/8] Aguardando pods do ToggleMaster ficarem prontos..."
+echo ">>> [7/10] Aguardando pods do ToggleMaster ficarem prontos..."
 echo "  (isso pode levar 2-5 minutos)"
 
 # Aguardar deployments
@@ -189,8 +189,30 @@ echo ""
 ###############################################################################
 # Step 8: Gerar API Key
 ###############################################################################
-echo ">>> [8/8] Gerando SERVICE_API_KEY..."
+echo ">>> [8/10] Gerando SERVICE_API_KEY..."
 "$SCRIPT_DIR/generate-api-key.sh"
+
+###############################################################################
+# Step 9: Instalar Monitoring Stack (Fase 4)
+###############################################################################
+echo ">>> [9/10] Instalando Monitoring Stack (Prometheus + Loki + Grafana + OTel)..."
+"$SCRIPT_DIR/install-monitoring.sh"
+echo ""
+
+###############################################################################
+# Step 10: Aplicar New Relic Secret (se existir)
+###############################################################################
+echo ">>> [10/10] Verificando New Relic secret..."
+NR_SECRET_FILE="$PROJECT_DIR/gitops/monitoring/newrelic-secret.yaml"
+if [ -f "$NR_SECRET_FILE" ]; then
+  kubectl apply -f "$NR_SECRET_FILE"
+  echo "  [OK] New Relic secret aplicado"
+else
+  echo "  [AVISO] New Relic secret nao encontrado."
+  echo "  Para configurar APM, copie e edite:"
+  echo "    cp gitops/monitoring/newrelic-secret.yaml.example gitops/monitoring/newrelic-secret.yaml"
+fi
+echo ""
 
 ###############################################################################
 # Resumo final
@@ -209,8 +231,19 @@ echo "  URL:   https://$ARGOCD_URL"
 echo "  User:  admin"
 echo "  Pass:  $ARGOCD_PASS"
 echo ""
+echo "Grafana (Monitoring):"
+GRAFANA_URL=$(kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "pendente")
+echo "  URL:   http://$GRAFANA_URL"
+echo "  User:  admin"
+echo "  Pass:  togglemaster2024"
+echo ""
+echo "OTel Collector:"
+echo "  gRPC: otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317"
+echo "  HTTP: otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4318"
+echo ""
 echo "Verificar pods:"
 echo "  kubectl get pods -n togglemaster"
+echo "  kubectl get pods -n monitoring"
 echo ""
 echo "Testar health:"
 echo "  kubectl port-forward svc/auth-service 8001:8001 -n togglemaster &"
