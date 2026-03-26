@@ -1,0 +1,182 @@
+############################
+# ArgoCD Project
+############################
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: togglemaster
+  namespace: argocd
+spec:
+  description: ToggleMaster Feature Flag Platform
+  sourceRepos:
+    - 'https://github.com/<GITHUB_USER>/TC3-ToggleMaster.git'
+  destinations:
+    - namespace: togglemaster
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+---
+############################
+# Auth Service
+############################
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: auth-service
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: togglemaster
+spec:
+  project: togglemaster
+  source:
+    repoURL: https://github.com/<GITHUB_USER>/TC3-ToggleMaster.git
+    targetRevision: main
+    path: gitops/auth-service
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: togglemaster
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+############################
+# Flag Service
+############################
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flag-service
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: togglemaster
+spec:
+  project: togglemaster
+  source:
+    repoURL: https://github.com/<GITHUB_USER>/TC3-ToggleMaster.git
+    targetRevision: main
+    path: gitops/flag-service
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: togglemaster
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+############################
+# Targeting Service
+############################
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: targeting-service
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: togglemaster
+spec:
+  project: togglemaster
+  source:
+    repoURL: https://github.com/<GITHUB_USER>/TC3-ToggleMaster.git
+    targetRevision: main
+    path: gitops/targeting-service
+    directory:
+      recurse: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: togglemaster
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+############################
+# Evaluation Service
+############################
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: evaluation-service
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: togglemaster
+spec:
+  project: togglemaster
+  source:
+    repoURL: https://github.com/<GITHUB_USER>/TC3-ToggleMaster.git
+    targetRevision: main
+    path: gitops/evaluation-service
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: togglemaster
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+############################
+# Analytics Service
+############################
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: analytics-service
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: togglemaster
+spec:
+  project: togglemaster
+  source:
+    repoURL: https://github.com/<GITHUB_USER>/TC3-ToggleMaster.git
+    targetRevision: main
+    path: gitops/analytics-service
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: togglemaster
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+---
+############################
+# Shared Resources (namespace, ingress)
+############################
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: togglemaster-shared
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: togglemaster
+spec:
+  project: togglemaster
+  source:
+    repoURL: https://github.com/<GITHUB_USER>/TC3-ToggleMaster.git
+    targetRevision: main
+    path: gitops
+    directory:
+      include: '{namespace.yaml,ingress.yaml}'
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: togglemaster
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
