@@ -12,7 +12,7 @@ WORKDIR /app
 COPY . .
 
 # Limpa e ajusta dependências
-RUN go mod tidy
+RUN GONOSUMDB=* GONOSUMCHECK=* go mod tidy
 
 # Compila binário estático para Linux
 RUN CGO_ENABLED=0 GOOS=linux go build -o evaluation-service .

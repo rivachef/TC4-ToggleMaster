@@ -5,11 +5,12 @@ FROM golang:1.23-alpine3.20 AS builder
 
 WORKDIR /app
 
-# Copia o projeto inteiro (incluindo go.mod quebrado)
-COPY . .
+# Instala git (necessário para go mod download)
+RUN apk add --no-cache git
 
-# Limpa e ajusta dependências
-RUN go mod tidy
+# Copia o projeto e resolve dependências
+COPY . .
+RUN GONOSUMDB=* GONOSUMCHECK=* go mod tidy
 
 # Compila binário estático
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o auth-service .
