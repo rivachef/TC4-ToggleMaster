@@ -1,5 +1,5 @@
 # Alertmanager Configuration Secret
-# This configures alert routing to OpsGenie and Discord
+# This configures alert routing to PagerDuty and Discord
 #
 # IMPORTANT: Copy this to alertmanager-secret.yaml and fill in your keys
 # DO NOT commit the actual secret to git
@@ -26,7 +26,7 @@ stringData:
       receiver: 'togglemaster-default'
 
       routes:
-        # Critical alerts -> OpsGenie + Discord + Self-Healing
+        # Critical alerts -> PagerDuty + Discord + Self-Healing
         - match:
             severity: critical
           receiver: 'togglemaster-critical'
@@ -44,12 +44,13 @@ stringData:
             send_resolved: true
 
       - name: 'togglemaster-critical'
-        opsgenie_configs:
-          - api_key: '<OPSGENIE_API_KEY>'
-            message: '{{ .CommonAnnotations.summary }}'
-            description: '{{ .CommonAnnotations.description }}'
-            priority: P1
-            tags: 'togglemaster,critical,{{ .CommonLabels.service }}'
+        pagerduty_configs:
+          - routing_key: '<PAGERDUTY_INTEGRATION_KEY>'
+            severity: critical
+            description: '{{ .CommonAnnotations.summary }}'
+            details:
+              description: '{{ .CommonAnnotations.description }}'
+              service: '{{ .CommonLabels.service }}'
         webhook_configs:
           # Discord notification
           - url: '<DISCORD_WEBHOOK_URL>'

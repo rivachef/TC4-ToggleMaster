@@ -193,25 +193,38 @@ echo ">>> [8/10] Gerando SERVICE_API_KEY..."
 "$SCRIPT_DIR/generate-api-key.sh"
 
 ###############################################################################
-# Step 9: Instalar Monitoring Stack (Fase 4)
+# Step 9: Garantir namespace monitoring e secrets manuais
 ###############################################################################
-echo ">>> [9/10] Instalando Monitoring Stack (Prometheus + Loki + Grafana + OTel)..."
-"$SCRIPT_DIR/install-monitoring.sh"
-echo ""
+echo ">>> [9/10] Garantindo namespace monitoring e secrets..."
 
-###############################################################################
-# Step 10: Aplicar New Relic Secret (se existir)
-###############################################################################
-echo ">>> [10/10] Verificando New Relic secret..."
+kubectl get namespace monitoring > /dev/null 2>&1 || kubectl create namespace monitoring
+echo "  [OK] namespace monitoring"
+
 NR_SECRET_FILE="$PROJECT_DIR/gitops/monitoring/newrelic-secret.yaml"
 if [ -f "$NR_SECRET_FILE" ]; then
   kubectl apply -f "$NR_SECRET_FILE"
   echo "  [OK] New Relic secret aplicado"
 else
-  echo "  [AVISO] New Relic secret nao encontrado."
-  echo "  Para configurar APM, copie e edite:"
+  echo "  [AVISO] $NR_SECRET_FILE nao encontrado — APM New Relic nao configurado."
   echo "    cp gitops/monitoring/newrelic-secret.yaml.example gitops/monitoring/newrelic-secret.yaml"
 fi
+
+AM_SECRET_FILE="$PROJECT_DIR/gitops/monitoring/alerting/alertmanager-secret.yaml"
+if [ -f "$AM_SECRET_FILE" ]; then
+  kubectl apply -f "$AM_SECRET_FILE"
+  echo "  [OK] Alertmanager secret aplicado"
+else
+  echo "  [AVISO] $AM_SECRET_FILE nao encontrado — alerting nao configurado."
+  echo "    cp gitops/monitoring/alerting/alertmanager-config.yaml gitops/monitoring/alerting/alertmanager-secret.yaml"
+  echo "    # Preencha PAGERDUTY_INTEGRATION_KEY, DISCORD_WEBHOOK_URL e GITHUB_PAT_TOKEN"
+fi
+echo ""
+
+###############################################################################
+# Step 10: Instalar Monitoring Stack (Fase 4)
+###############################################################################
+echo ">>> [10/10] Instalando Monitoring Stack (Prometheus + Loki + Grafana + OTel)..."
+"$SCRIPT_DIR/install-monitoring.sh"
 echo ""
 
 ###############################################################################
