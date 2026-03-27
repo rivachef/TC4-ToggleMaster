@@ -62,6 +62,12 @@ write:
 gateway:
   enabled: false
 
+# Disable caches (not needed for demo, saves pods)
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+
 # Disable test
 test:
   enabled: false
