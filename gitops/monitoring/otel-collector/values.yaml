@@ -3,6 +3,9 @@
 
 mode: deployment
 
+image:
+  repository: otel/opentelemetry-collector-contrib
+
 replicaCount: 1
 
 resources:
@@ -74,9 +77,9 @@ config:
       resource_to_telemetry_conversion:
         enabled: true
 
-    # Loki exporter (logs -> Loki)
-    loki:
-      endpoint: "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+    # Loki exporter (logs -> Loki via OTLP)
+    otlphttp/loki:
+      endpoint: "http://loki.monitoring.svc.cluster.local:3100/otlp"
 
     # OTLP exporter (traces -> New Relic)
     # New Relic OTLP endpoint - API key injected via env var
@@ -112,7 +115,7 @@ config:
       logs:
         receivers: [otlp]
         processors: [memory_limiter, resource, batch]
-        exporters: [loki, debug]
+        exporters: [otlphttp/loki, debug]
 
     telemetry:
       metrics:
