@@ -24,7 +24,13 @@ func initTelemetry(ctx context.Context, serviceName string) func() {
 		endpoint = "otel-collector-opentelemetry-collector.monitoring.svc.cluster.local:4317"
 	}
 
+	// WithFromEnv reads OTEL_SERVICE_NAME and OTEL_RESOURCE_ATTRIBUTES (service.namespace etc)
+	// WithTelemetrySDK adds telemetry.sdk.name, telemetry.sdk.language=go (required by New Relic)
+	// WithHost adds host.name for entity synthesis
 	res, err := resource.New(ctx,
+		resource.WithFromEnv(),
+		resource.WithTelemetrySDK(),
+		resource.WithHost(),
 		resource.WithAttributes(
 			semconv.ServiceName(serviceName),
 			semconv.ServiceVersion("2.0.0"),

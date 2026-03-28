@@ -24,7 +24,7 @@ Implementar Observabilidade Total, APM com visibilidade profunda, alertas inteli
 | OTel Collector (Obrigatorio) | `gitops/monitoring/otel-collector/values.yaml` - Deployment mode, receivers OTLP gRPC+HTTP | OK |
 | Roteamento metricas | OTel Collector -> Prometheus (remote write) | OK |
 | Roteamento logs | OTel Collector -> Loki (loki exporter) | OK |
-| Roteamento traces | OTel Collector -> New Relic (OTLP gRPC) | OK |
+| Roteamento traces | OTel Collector -> New Relic (OTLP HTTP) | OK |
 | Processadores | batch, memory_limiter, resource (cluster.name, environment) | OK |
 
 ### 3. Instrumentacao e APM - COMPLETO
@@ -42,7 +42,7 @@ Implementar Observabilidade Total, APM com visibilidade profunda, alertas inteli
 | Requisito | Implementacao | Status |
 |-----------|--------------|--------|
 | Alerta inteligente | `gitops/monitoring/alerting/prometheus-rules.yaml` - HighErrorRate5xx (>5% por 2min), PodCrashLooping, PodNotReady, HighCPU, HighMemory | OK |
-| Gerenciamento de incidentes | **OpsGenie** (free tier: 5 usuarios, alertas ilimitados) - integrado via Alertmanager | OK |
+| Gerenciamento de incidentes | **PagerDuty** (free tier, Events API v2) - integrado via Alertmanager (`pagerduty_configs`) | OK |
 | ChatOps | **Discord** - webhook nativo via Alertmanager, notificacoes de alerta + self-healing | OK |
 | Self-Healing (Obrigatorio) | `.github/workflows/self-healing.yaml` - GitHub Action disparada via `repository_dispatch`, executa `kubectl rollout restart`, notifica Discord | OK |
 
@@ -60,15 +60,15 @@ Implementar Observabilidade Total, APM com visibilidade profunda, alertas inteli
 
 **Justificativa:** O free tier do New Relic e significativamente mais generoso, permitindo manter o projeto rodando para avaliacao sem preocupacao com expiracoes. O suporte nativo a OTLP simplifica a arquitetura (OTel Collector exporta direto).
 
-### OpsGenie vs PagerDuty
-| Criterio | OpsGenie | PagerDuty |
-|----------|----------|-----------|
-| Free tier | **5 usuarios + alertas ilimitados** | Limitado |
-| Integracao Grafana | Nativa (contact point) | Nativa |
-| Integracao Alertmanager | Nativa (opsgenie_configs) | Via webhook |
-| Escolha | **OpsGenie** | - |
+### PagerDuty vs PagerDuty
+| Criterio | PagerDuty | PagerDuty |
+|----------|-----------|----------|
+| Free tier | Disponivel | Migrado para Jira SM (descontinuado) |
+| Integracao Alertmanager | Nativa (`pagerduty_configs`) | Nativa |
+| Events API | v2 (simples, direto) | Complexo |
+| Escolha | **PagerDuty** | - |
 
-**Justificativa:** Free tier mais generoso e integracao nativa com Alertmanager. Oportunidade de aprendizado (complementa experiencia previa com PagerDuty).
+**Justificativa:** PagerDuty foi descontinuado pela Atlassian e migrado para o Jira Service Management. PagerDuty tem integracao nativa no Alertmanager via `pagerduty_configs` com Events API v2, free tier adequado para o projeto.
 
 ---
 
@@ -85,7 +85,7 @@ Microsservicos (OTel SDK/Auto) --> OTel Collector --> Prometheus (metricas)
                                                         |
                                               Alertmanager (roteamento)
                                                    /    |    \
-                                           OpsGenie  Discord  GitHub API
+                                           PagerDuty  Discord  GitHub API
                                           (incidente) (chat)  (self-healing)
                                                               |
                                                     kubectl rollout restart
@@ -101,7 +101,7 @@ Microsservicos (OTel SDK/Auto) --> OTel Collector --> Prometheus (metricas)
 | Microsservicos instrumentados | 5 (2 Go + 3 Python) |
 | Ferramentas de monitoring | 6 (Prometheus, Grafana, Loki, Promtail, OTel Collector, New Relic) |
 | Regras de alerta | 5 (HighErrorRate5xx, PodCrashLooping, PodNotReady, HighCPU, HighMemory) |
-| Canais de notificacao | 3 (OpsGenie, Discord, GitHub Actions) |
+| Canais de notificacao | 3 (PagerDuty, Discord, GitHub Actions) |
 | Dashboard customizado | 1 (12 paineis: cluster health + microsservicos + logs) |
 | Pipelines CI/CD | 6 (5 servicos + 1 self-healing) |
 | Scripts de automacao | 9 (setup, monitoring, secrets, self-healing) |

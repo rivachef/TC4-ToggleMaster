@@ -9,6 +9,7 @@ import (
 
 	_ "github.com/jackc/pgx/v4/stdlib"
 	"github.com/joho/godotenv"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // App holds the application dependencies for the Auth Service.
@@ -26,7 +27,6 @@ func main() {
 	ctx := context.Background()
 	shutdownTelemetry := initTelemetry(ctx, "auth-service")
 	defer shutdownTelemetry()
-	initOtelMetrics("auth-service")
 
 	// --- Configuração ---
 	port := os.Getenv("PORT")
@@ -67,8 +67,9 @@ func main() {
 	// Eles são protegidos pelo middleware de autenticação
 	mux.Handle("/admin/keys", app.masterKeyAuthMiddleware(http.HandlerFunc(app.createKeyHandler)))
 
-	// Wrap all routes with OTel middleware
-	handler := otelMiddleware(mux)
+	// Wrap all routes with official OTel HTTP handler
+	// Creates standard http.server.request.duration metric (recognized by New Relic APM)
+	handler := otelhttp.NewHandler(mux, "auth-service")
 
 	log.Printf("Auth Service v2.0.0 rodando na porta %s (OTel enabled)", port)
 	if err := http.ListenAndServe(":"+port, handler); err != nil {
