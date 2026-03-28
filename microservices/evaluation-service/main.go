@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/sqs"
 	"github.com/go-redis/redis/v8"
 	"github.com/joho/godotenv"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Contexto global para o Redis
@@ -35,7 +36,6 @@ func main() {
 	otelCtx := context.Background()
 	shutdownTelemetry := initTelemetry(otelCtx, "evaluation-service")
 	defer shutdownTelemetry()
-	initOtelMetrics("evaluation-service")
 
 	// --- Configuração ---
 	port := os.Getenv("PORT")
@@ -121,8 +121,9 @@ func main() {
 	mux.HandleFunc("/health", app.healthHandler)
 	mux.HandleFunc("/evaluate", app.evaluationHandler)
 
-	// Wrap all routes with OTel middleware
-	handler := otelMiddleware(mux)
+	// Wrap all routes with official OTel HTTP handler
+	// Creates standard http.server.request.duration metric (recognized by New Relic APM)
+	handler := otelhttp.NewHandler(mux, "evaluation-service")
 
 	log.Printf("Serviço de Avaliação (Go) v2.0.0 rodando na porta %s (OTel enabled)", port)
 	if err := http.ListenAndServe(":"+port, handler); err != nil {

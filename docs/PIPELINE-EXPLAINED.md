@@ -111,7 +111,7 @@ service:
     traces:
       receivers: [otlp]                           # gRPC :4317 + HTTP :4318
       processors: [memory_limiter, resource, batch]
-      exporters: [otlp/newrelic, debug]            # -> New Relic
+      exporters: [otlphttp/newrelic, debug]         # -> New Relic (HTTP)
 
     metrics:
       receivers: [otlp]
@@ -138,7 +138,7 @@ service:
 |----------|---------|-----------|
 | `prometheusremotewrite` | Prometheus `:9090/api/v1/write` | HTTP remote write |
 | `otlphttp/loki` | Loki `:3100/otlp` | HTTP OTLP |
-| `otlp/newrelic` | `otlp.nr-data.net:4317` | gRPC (TLS) |
+| `otlphttp/newrelic` | `https://otlp.nr-data.net` | HTTP (TLS) |
 
 > **Nota**: Versoes anteriores do chart usavam um exporter `loki` nativo, que foi removido. Agora usamos `otlphttp/loki` com o endpoint OTLP do Loki.
 
@@ -362,10 +362,10 @@ kubectl exec -n monitoring alertmanager-prometheus-kube-prometheus-alertmanager-
 └──────────┘              │  ┌──────────┴────────────────────┐      │
                           │  │      OTel Collector            │      │
 ┌──────────┐              │  │  traces  -> New Relic          │      │
-│New Relic │◄─otlp/grpc───┤  │  metrics -> Prometheus         │      │
+│New Relic │◄─otlp/http───┤  │  metrics -> Prometheus         │      │
 │  APM     │              │  │  logs    -> Loki               │      │
 └──────────┘              │  └──────────┬────────────────────┘      │
-                          │             │ otlp (grpc :4317)          │
+                          │             │ otlp (gRPC :4317 / HTTP :4318) │
                           │  ┌──────────┴────────────────────┐      │
                           │  │      Microsservicos            │      │
                           │  │  auth-service (Go)        x2   │      │
