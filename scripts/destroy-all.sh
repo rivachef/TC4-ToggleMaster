@@ -256,14 +256,15 @@ if [ "$STATE_COUNT" -gt 0 ]; then
     terraform state list 2>/dev/null
     echo ""
 
-    # Tentar force-unlock caso haja lock ativo
-    LOCK_ID=$(terraform plan -no-color 2>&1 | grep -oP 'ID:\s+\K[\w-]+' || true)
+    # Tentar force-unlock caso haja lock ativo (macOS-compatible, no grep -P)
+    PLAN_OUTPUT=$(terraform plan -no-color -lock=false 2>&1 || true)
+    LOCK_ID=$(echo "$PLAN_OUTPUT" | grep 'ID:' | head -1 | sed 's/.*ID:[[:space:]]*//' | tr -d '[:space:]' || true)
     if [ -n "$LOCK_ID" ]; then
         log_warn "State locked. Forçando unlock (ID: $LOCK_ID)..."
-        printf 'yes\n' | terraform force-unlock "$LOCK_ID" 2>/dev/null || true
+        terraform force-unlock -force "$LOCK_ID" 2>/dev/null || true
     fi
 
-    terraform destroy -auto-approve 2>&1
+    terraform destroy -auto-approve -lock-timeout=60s 2>&1
     DESTROY_EXIT=$?
 
     if [ $DESTROY_EXIT -eq 0 ]; then
