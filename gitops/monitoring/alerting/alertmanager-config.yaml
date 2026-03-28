@@ -5,10 +5,14 @@
 # DO NOT commit the actual secret to git
 #
 # Apply: kubectl apply -f gitops/monitoring/alerting/alertmanager-secret.yaml
+#
+# NOTE: The secret name MUST match the Helm-managed secret:
+#   alertmanager-prometheus-kube-prometheus-alertmanager
+# Discord webhooks accept Slack-format messages via the /slack URL suffix.
 apiVersion: v1
 kind: Secret
 metadata:
-  name: alertmanager-togglemaster
+  name: alertmanager-prometheus-kube-prometheus-alertmanager
   namespace: monitoring
   labels:
     app.kubernetes.io/part-of: togglemaster
@@ -26,7 +30,12 @@ stringData:
       receiver: 'togglemaster-default'
 
       routes:
-        # Critical alerts -> PagerDuty + Discord + Self-Healing
+        # Silence Watchdog (heartbeat alert, not actionable)
+        - match:
+            alertname: Watchdog
+          receiver: 'null'
+
+        # Critical alerts -> PagerDuty + Discord
         - match:
             severity: critical
           receiver: 'togglemaster-critical'
@@ -38,10 +47,20 @@ stringData:
           receiver: 'togglemaster-warning'
 
     receivers:
+      - name: 'null'
+
       - name: 'togglemaster-default'
-        webhook_configs:
-          - url: '<DISCORD_WEBHOOK_URL>'
+        slack_configs:
+          - api_url: '<DISCORD_WEBHOOK_URL>/slack'
+            channel: '#alerts'
             send_resolved: true
+            title: '{{ .CommonLabels.alertname }}'
+            text: >-
+              {{ range .Alerts }}
+              *Alert:* {{ .Labels.alertname }} - {{ .Labels.severity }}
+              *Summary:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              {{ end }}
 
       - name: 'togglemaster-critical'
         pagerduty_configs:
@@ -51,23 +70,30 @@ stringData:
             details:
               description: '{{ .CommonAnnotations.description }}'
               service: '{{ .CommonLabels.service }}'
-        webhook_configs:
-          # Discord notification
-          - url: '<DISCORD_WEBHOOK_URL>'
+        slack_configs:
+          - api_url: '<DISCORD_WEBHOOK_URL>/slack'
+            channel: '#alerts'
             send_resolved: true
-          # Self-Healing webhook (GitHub Actions repository_dispatch)
-          - url: 'https://api.github.com/repos/rivachef/TC4-ToggleMaster/dispatches'
-            http_config:
-              authorization:
-                type: Bearer
-                credentials: '<GITHUB_PAT_TOKEN>'
-            send_resolved: false
-            max_alerts: 1
+            title: 'CRITICAL: {{ .CommonLabels.alertname }}'
+            text: >-
+              {{ range .Alerts }}
+              *Alert:* {{ .Labels.alertname }} - CRITICAL
+              *Summary:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              {{ end }}
 
       - name: 'togglemaster-warning'
-        webhook_configs:
-          - url: '<DISCORD_WEBHOOK_URL>'
+        slack_configs:
+          - api_url: '<DISCORD_WEBHOOK_URL>/slack'
+            channel: '#alerts'
             send_resolved: true
+            title: 'WARNING: {{ .CommonLabels.alertname }}'
+            text: >-
+              {{ range .Alerts }}
+              *Alert:* {{ .Labels.alertname }} - WARNING
+              *Summary:* {{ .Annotations.summary }}
+              *Description:* {{ .Annotations.description }}
+              {{ end }}
 
     # Inhibit rules: critical silences warning for same alert
     inhibit_rules:
