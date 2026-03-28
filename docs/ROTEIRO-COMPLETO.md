@@ -12,8 +12,9 @@ Guia passo-a-passo para configurar o ambiente completo do ToggleMaster com obser
 - [ ] Terraform >= 1.5
 - [ ] kubectl >= 1.28
 - [ ] Helm >= 3.12
-- [ ] Docker Desktop (deve estar rodando antes de executar o setup)
+- [ ] Docker Desktop (deve estar **rodando** antes de executar o setup)
 - [ ] gh CLI >= 2.0
+- [ ] python3 (necessario para resolucao dinamica do Loki UID no dashboard)
 
 ### Contas Externas (criar ANTES do deploy)
 
@@ -28,6 +29,17 @@ Guia passo-a-passo para configurar o ambiente completo do ToggleMaster com obser
 
 > **OpsGenie foi descontinuado.** A Atlassian migrou o OpsGenie para o Jira Service Management.
 > Usamos PagerDuty como alternativa gratuita para incident management.
+
+### GitHub Secrets (configurar no repositorio)
+
+No GitHub (Settings > Secrets and variables > Actions), configure:
+
+| Secret | Valor | Funcao |
+|--------|-------|--------|
+| `AWS_ACCESS_KEY_ID` | Access Key | kubectl no cluster |
+| `AWS_SECRET_ACCESS_KEY` | Secret Key | kubectl no cluster |
+| `AWS_SESSION_TOKEN` | Session Token | kubectl no cluster |
+| `DISCORD_WEBHOOK_URL` | URL do webhook | Notificacao self-healing |
 
 ---
 
@@ -52,7 +64,7 @@ O AWS Academy impoe restricoes que afetam diretamente o deploy. Entenda antes de
 
 **Impacto**: Prometheus e Loki nao conseguem armazenar dados em disco persistente. Se o pod reiniciar, metricas e logs sao perdidos.
 
-**Workaround**: Usamos `emptyDir` (armazenamento efemero no node). Aceitavel para ambiente de demo/avaliacao.
+**Workaround**: Usamos `emptyDir` (armazenamento efemero no node). Aceitavel para ambiente de demo/avaliacao. O EBS CSI Driver nao e instalado pois nao ha necessidade.
 
 ### 3. Limite de Pods por Node
 
@@ -72,7 +84,13 @@ Max Pods = (ENIs x IPs_por_ENI) - 1
 As credenciais do AWS Academy expiram a cada 4 horas. Apos renovar no console, execute:
 ```bash
 ./scripts/update-aws-credentials.sh
+
+# Atualizar GitHub Secrets tambem (para self-healing funcionar)
 ```
+
+### 5. KubeControllerManagerDown (alerta permanente)
+
+O alerta `KubeControllerManagerDown` sempre fica "firing" no EKS porque a AWS gerencia o control plane e nao expoe o kube-controller-manager ao Prometheus. Esse alerta e silenciado automaticamente na configuracao do Alertmanager (rota para receiver `null`).
 
 ---
 
@@ -88,17 +106,19 @@ As credenciais do AWS Academy expiram a cada 4 horas. Apos renovar no console, e
 | monitoring | Loki, Promtail (DaemonSet x3), Loki Canary (DaemonSet x3) | 7 |
 | monitoring | OTel Collector, Node Exporter (DaemonSet x3) | 4 |
 | argocd | Server, Controller, Redis, Repo Server | 4 |
-| kube-system | CoreDNS x2, kube-proxy (DS x3), aws-node (DS x3), EBS CSI | 9 |
+| kube-system | CoreDNS x2, kube-proxy (DS x3), aws-node (DS x3) | 8 |
 | ingress-nginx | Controller + admission jobs | 3 |
-| **Total** | | **~45** |
+| **Total** | | **~44** |
+
+> **Nota**: EBS CSI Driver nao e instalado (economia de 4 pod slots), pois nao ha suporte a OIDC/IRSA no AWS Academy.
 
 ### Opcoes de Cluster
 
 | Configuracao | Capacidade | Custo/hr | Margem |
 |-------------|-----------|----------|--------|
 | 2x t3.medium | 34 pods | $0.0832 | **INSUFICIENTE** |
-| **3x t3.medium** | **51 pods** | **$0.1248** | **+6 pods** |
-| 2x t3.large | 70 pods | $0.1664 | +25 pods |
+| **3x t3.medium** | **51 pods** | **$0.1248** | **+7 pods** |
+| 2x t3.large | 70 pods | $0.1664 | +26 pods |
 
 **Escolha: 3x t3.medium** - Menor custo com capacidade suficiente para 2 replicas de cada servico.
 
@@ -167,9 +187,14 @@ cp gitops/monitoring/newrelic-secret.yaml.example gitops/monitoring/newrelic-sec
 cp gitops/monitoring/alerting/alertmanager-config.yaml gitops/monitoring/alerting/alertmanager-secret.yaml
 # Editar alertmanager-secret.yaml:
 #   <PAGERDUTY_INTEGRATION_KEY> -> Sua chave PagerDuty (Events API v2)
-#   <DISCORD_WEBHOOK_URL>       -> URL do webhook Discord (3 ocorrencias)
+#   <DISCORD_WEBHOOK_URL>       -> URL do webhook Discord (3 ocorrencias, SEM o /slack no final)
 #   <GITHUB_PAT_TOKEN>          -> Token GitHub (para self-healing)
 ```
+
+> **IMPORTANTE sobre Discord**: O template ja adiciona `/slack` ao final da URL automaticamente.
+> Discord nao aceita o formato JSON nativo do Alertmanager (erro "Cannot send an empty message").
+> Usamos `slack_configs` do Alertmanager com o sufixo `/slack` na URL do webhook do Discord,
+> que aceita o formato Slack-compatible.
 
 ---
 
@@ -188,13 +213,34 @@ O script `setup-full.sh` executa **10 passos** automaticamente:
 | 1 | Gerar secrets a partir do Terraform output |
 | 2 | Instalar ArgoCD |
 | 3 | Aplicar secrets no cluster |
-| 4 | Build e push das imagens Docker (ECR) |
+| 4 | Build e push das imagens Docker (ECR) + **substituir placeholders e auto commit+push** |
 | 5 | Aplicar ArgoCD Applications |
 | 6 | Instalar NGINX Ingress Controller |
 | 7 | Aguardar pods ficarem prontos |
 | 8 | Gerar SERVICE_API_KEY |
 | 9 | Criar namespace monitoring + aplicar secrets manuais (New Relic, Alertmanager) |
-| 10 | Instalar Monitoring Stack (Prometheus + Loki + Promtail + OTel Collector) |
+| 10 | Instalar Monitoring Stack (Prometheus + Loki + Promtail + OTel Collector + Dashboard + Alert Rules) |
+
+### O que acontece no passo 4 (placeholders)
+
+O repositorio usa placeholders nos manifestos GitOps:
+- `<AWS_ACCOUNT_ID>` nos `deployment.yaml` (imagem ECR)
+- `<GITHUB_USER>` no `applications.yaml` (URL do repositorio ArgoCD)
+
+O script substitui esses placeholders com os valores reais, **faz commit e push automaticamente** para que o ArgoCD sincronize os valores corretos. Sem isso, os pods ficam com `InvalidImageName`.
+
+O script `destroy-all.sh` faz o caminho inverso: restaura os placeholders e faz commit+push, deixando o repositorio limpo para o proximo deploy.
+
+### O que acontece no passo 10 (monitoring)
+
+O `install-monitoring.sh` executa:
+1. Instala kube-prometheus-stack (Prometheus + Grafana + Alertmanager) via Helm
+2. Instala Loki (log aggregation) via Helm
+3. Instala Promtail (log collector DaemonSet) via Helm
+4. Instala OpenTelemetry Collector via Helm
+5. Aplica PrometheusRules customizadas (togglemaster-alerts)
+6. **Resolve dinamicamente o UID do datasource Loki** no Grafana (UID e aleatorio por instalacao)
+7. Cria ConfigMap com o dashboard "ToggleMaster - Ecosystem Health"
 
 O script e **idempotente** - pode ser re-executado com seguranca se falhar no meio.
 
@@ -211,52 +257,93 @@ O script e **idempotente** - pode ser re-executado com seguranca se falhar no me
 
 ### 4.2 Como funciona
 
-O OTel Collector recebe traces dos microsservicos via OTLP (porta 4317/gRPC) e encaminha para:
-- **Traces** -> New Relic (OTLP endpoint)
-- **Metrics** -> Prometheus (remote write)
-- **Logs** -> Loki (OTLP/HTTP)
+Os microsservicos enviam telemetria via OpenTelemetry SDK para o OTel Collector (porta 4317/gRPC), que distribui para 3 backends:
+
+| Sinal | Pipeline | Destino |
+|-------|----------|---------|
+| **Traces** | apps -> OTel Collector -> OTLP | New Relic |
+| **Metrics** | apps -> OTel Collector -> Remote Write | Prometheus |
+| **Logs** | apps -> stdout/stderr -> Promtail -> | Loki |
+
+### 4.3 Metricas por linguagem
+
+Os servicos Go e Python emitem metricas com nomes diferentes:
+
+| Linguagem | Servicos | Metrica HTTP | Status Code Label |
+|-----------|----------|-------------|-------------------|
+| Go | auth-service, evaluation-service | `http_server_request_duration_seconds` | `http_response_status_code` |
+| Python | flag-service, targeting-service, analytics-service | `http_server_duration_milliseconds` | `http_status_code` |
+
+O dashboard "Ecosystem Health" inclui queries para ambas as metricas automaticamente.
+
+> **Nota**: As metricas chegam ao Prometheus via OTel Collector remote write, portanto **nao possuem label `namespace`**. O dashboard filtra por `service_name` em vez de `namespace`.
 
 ---
 
 ## Parte 5: Configuracao de Alertas
 
-### 5.1 Verificar regras de alerta
+### 5.1 Regras de alerta customizadas
 
-As PrometheusRules sao aplicadas automaticamente pelo Helm:
+As PrometheusRules do ToggleMaster sao aplicadas automaticamente pelo `install-monitoring.sh`:
 
 ```bash
 kubectl get prometheusrules -n monitoring
 # togglemaster-alerts deve estar listado
-
-# Verificar no Grafana: Alerting > Alert Rules
 ```
 
-### 5.2 Verificar PagerDuty
+| Alerta | Severidade | Condicao |
+|--------|-----------|----------|
+| HighErrorRate5xx | critical | >5% de erros 5xx por 2 min |
+| PodCrashLooping | warning | >3 restarts em 15 min |
+| PodNotReady | warning | Pod nao-ready por 5 min (exclui jobs completos) |
+| HighCPUUsage | warning | >90% do CPU limit por 5 min |
+| HighMemoryUsage | warning | >90% do memory limit por 5 min |
+
+### 5.2 Roteamento de alertas
+
+| Severidade | Destino |
+|-----------|---------|
+| critical | PagerDuty + Discord |
+| warning | Discord |
+| Watchdog | Silenciado (heartbeat) |
+| KubeControllerManagerDown | Silenciado (esperado no EKS) |
+
+### 5.3 Verificar PagerDuty
 
 1. Acesse https://app.pagerduty.com
 2. Va em Incidents - alertas criticos aparecem aqui
 3. Pode configurar notificacoes por email/SMS/app
 
-### 5.3 Verificar Discord
+### 5.4 Verificar Discord
 
-Alertas de warning e info sao enviados via webhook para o canal configurado.
+Alertas de warning e critical sao enviados via Slack-compatible webhook. Alertas resolvidos tambem enviam notificacao de "RESOLVED".
+
+### 5.5 Testar alertas manualmente
+
+```bash
+# Enviar alerta de teste para o Alertmanager
+kubectl exec -n monitoring alertmanager-prometheus-kube-prometheus-alertmanager-0 \
+  -c alertmanager -- wget -qO- --post-data='[{
+  "status": "firing",
+  "labels": {
+    "alertname": "TestAlert",
+    "severity": "warning",
+    "team": "togglemaster"
+  },
+  "annotations": {
+    "summary": "Alerta de teste",
+    "description": "Este e um alerta de teste para validar o pipeline de notificacao."
+  }
+}]' --header='Content-Type: application/json' http://localhost:9093/api/v2/alerts
+
+# Resolver o alerta de teste (trocar "firing" por "resolved")
+```
 
 ---
 
 ## Parte 6: Configuracao do Self-Healing
 
-### 6.1 GitHub Secrets
-
-No GitHub (Settings > Secrets and variables > Actions), configure:
-
-| Secret | Valor | Funcao |
-|--------|-------|--------|
-| `AWS_ACCESS_KEY_ID` | Access Key | kubectl no cluster |
-| `AWS_SECRET_ACCESS_KEY` | Secret Key | kubectl no cluster |
-| `AWS_SESSION_TOKEN` | Session Token | kubectl no cluster |
-| `DISCORD_WEBHOOK_URL` | URL do webhook | Notificacao self-healing |
-
-### 6.2 Testar Self-Healing Manualmente
+### 6.1 Testar Self-Healing Manualmente
 
 ```bash
 # Via gh CLI
@@ -266,7 +353,7 @@ No GitHub (Settings > Secrets and variables > Actions), configure:
 # Actions > Self-Healing > Run workflow > Escolher servico
 ```
 
-### 6.3 Testar Fluxo Completo (Fault Injection)
+### 6.2 Testar Fluxo Completo (Fault Injection)
 
 ```bash
 # Injetar falha
@@ -283,32 +370,69 @@ kubectl get pods -n togglemaster -w
 
 ---
 
-## Parte 7: Verificacao Final
+## Parte 7: Dashboard Grafana
+
+### 7.1 Dashboard "ToggleMaster - Ecosystem Health"
+
+O dashboard inclui os seguintes paineis:
+
+**Cluster Health:**
+- CPU Usage by Namespace (togglemaster + monitoring)
+- Memory Usage by Namespace
+- Pod Status (quantidade de pods Running)
+- Node CPU % (por node, mostrando IP)
+- Node Memory % (por node, mostrando IP)
+- Cluster Pods Total
+
+**Microservices:**
+- HTTP Request Rate by Service (Go + Python metrics combinadas)
+- HTTP Error Rate 5xx by Service
+- HTTP Latency P95 by Service (Python convertido de ms para seconds)
+- Pod Restarts (barras, por pod)
+
+**Logs (Real-Time):**
+- ToggleMaster Logs (Live) - todos os logs do namespace com formato pod + stream
+- Error Logs Only - filtrado por `error|fatal|panic|exception|traceback`
+
+### 7.2 Acessar Grafana
+
+```bash
+# URL via LoadBalancer
+kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+
+# Credenciais: admin / togglemaster2024
+```
+
+### 7.3 Nota sobre o Loki UID
+
+O Grafana atribui UIDs aleatorios aos datasources em cada instalacao. O `install-monitoring.sh` resolve o UID do Loki dinamicamente via API do Grafana antes de carregar o dashboard. Se por algum motivo os paineis de log nao funcionarem, edite o painel e selecione o datasource Loki manualmente.
+
+---
+
+## Parte 8: Verificacao Final
 
 ### Checklist de Funcionamento
 
 ```bash
-# Microsservicos (5 servicos x 2 replicas = 10 pods)
-kubectl get pods -n togglemaster        # 10 pods Running
+# Microsservicos (5 servicos x 2 replicas = 10 pods Running)
+kubectl get pods -n togglemaster
 
-# Monitoring (~13 pods)
+# Monitoring (~16 pods)
 kubectl get pods -n monitoring
 
 # Nodes (3 nodes Ready)
 kubectl get nodes
 
-# Grafana
-kubectl get svc prometheus-grafana -n monitoring
-# Acessar via LoadBalancer URL | admin / togglemaster2024
-
-# Dashboard customizado: ToggleMaster - Ecosystem Health
-# Datasources: Prometheus + Loki configurados
-
-# Alertas
-kubectl get prometheusrules -n monitoring
-
-# ArgoCD
+# ArgoCD (7 apps Synced + Healthy)
 kubectl get applications -n argocd
+
+# Alertas customizados
+kubectl get prometheusrules -n monitoring
+# togglemaster-alerts deve estar listado
+
+# Grafana dashboard
+kubectl get configmaps -n monitoring -l grafana_dashboard
+# togglemaster-dashboard deve estar listado
 ```
 
 ### Endpoints
@@ -320,16 +444,18 @@ kubectl get applications -n argocd
 | Loki | `loki.monitoring:3100` |
 | OTel Collector (gRPC) | `otel-collector-opentelemetry-collector.monitoring:4317` |
 | OTel Collector (HTTP) | `otel-collector-opentelemetry-collector.monitoring:4318` |
-| ArgoCD | `argocd-server.argocd:443` (port-forward 8080) |
+| ArgoCD | `argocd-server.argocd:443` (LoadBalancer) |
 
 ### Acessar UIs
 
 ```bash
 # Grafana (via LoadBalancer - ja exposto)
 kubectl get svc prometheus-grafana -n monitoring -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+# Credenciais: admin / togglemaster2024
 
-# ArgoCD (via port-forward)
-kubectl port-forward svc/argocd-server -n argocd 8080:443
+# ArgoCD (via LoadBalancer - ja exposto)
+kubectl get svc argocd-server -n argocd -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+# User: admin
 # Senha: kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
 ```
 
@@ -348,6 +474,20 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443
 
 ---
 
+## Destruir o Ambiente
+
+```bash
+./scripts/destroy-all.sh
+```
+
+O script:
+1. Remove recursos Kubernetes (LoadBalancers, namespaces, ArgoCD)
+2. Limpa Security Groups e ENIs orfaos na AWS
+3. Executa `terraform destroy`
+4. **Restaura placeholders** nos manifestos e faz commit+push (repo limpo para proximo deploy)
+
+---
+
 ## Troubleshooting - Problemas Conhecidos
 
 ### Docker nao iniciado
@@ -355,14 +495,14 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443
 **Fix**: Iniciar Docker Desktop antes de rodar `setup-full.sh`. O script e idempotente, basta re-executar.
 
 ### Pods em Pending (pod limit)
-**Erro**: Pods ficam em `Pending` com evento `0/2 nodes are available: Too many pods`
-**Causa**: 2x t3.medium = 34 pods max, insuficiente para o stack completo.
-**Fix**: Escalar para 3 nodes (`terraform apply`) ou reduzir replicas temporariamente.
+**Erro**: Pods ficam em `Pending` com evento `0/N nodes are available: Too many pods`
+**Causa**: t3.medium tem limite de 17 pods por node. Com 3 nodes = 51 max.
+**Fix**: Verificar contagem de pods (`kubectl get pods --all-namespaces -o wide | awk '{print $8}' | sort | uniq -c`). Se necessario, remover componentes nao essenciais ou escalar nodes.
 
 ### InvalidImageName nos pods
 **Erro**: `InvalidImageName` com `<AWS_ACCOUNT_ID>` literal no nome da imagem.
-**Causa**: `setup-full.sh` substituiu placeholders localmente, mas ArgoCD sincroniza do git (onde ainda estavam os placeholders).
-**Fix**: Commitar e pushar os deployment.yaml apos o setup. Na proxima vez, usar Kustomize/Helm para injecao de valores.
+**Causa**: Placeholders nao foram substituidos, ou nao foi feito commit+push apos substituicao.
+**Fix**: O `setup-full.sh` agora faz commit+push automaticamente apos substituir placeholders. Se falhar, verificar se o git push funcionou.
 
 ### PVC Pending (sem EBS CSI/OIDC)
 **Erro**: PersistentVolumeClaims ficam em `Pending` indefinidamente.
@@ -377,7 +517,7 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443
 ### OTel Collector - exporter 'loki' desconhecido
 **Erro**: `unknown type: "loki"` no exporter do OTel Collector.
 **Causa**: Versoes mais novas do chart removeram o exporter `loki` nativo.
-**Fix**: Usar `otlphttp/loki` com endpoint `http://loki.monitoring.svc.cluster.local:3100/otlp`.
+**Fix**: Usar `otlphttp/loki` com endpoint `http://loki.monitoring.svc.cluster.local:3100/otlp`. Ja configurado.
 
 ### ArgoCD revertendo mudancas manuais
 **Erro**: `kubectl scale --replicas=1` funciona mas volta para 2.
@@ -389,23 +529,22 @@ kubectl port-forward svc/argocd-server -n argocd 8080:443
 **Causa**: `generate-secrets.sh` gera nova MASTER_KEY cada execucao, mas pods usam a versao anterior.
 **Fix**: `kubectl rollout restart deployment/auth-service -n togglemaster` antes de gerar API key.
 
----
+### Discord recebe "Cannot send an empty message"
+**Erro**: Alertmanager webhook para Discord falha com erro 400.
+**Causa**: Discord nao aceita o formato JSON nativo do Alertmanager.
+**Fix**: Usar `slack_configs` com URL `<DISCORD_WEBHOOK_URL>/slack` em vez de `webhook_configs`. Ja configurado no template.
 
-## Melhorias para o Proximo Deploy
+### Alertas nao chegam no Discord/PagerDuty
+**Erro**: Alertas aparecem no Grafana mas nao sao notificados.
+**Causa**: O secret do Alertmanager deve ter o nome exato `alertmanager-prometheus-kube-prometheus-alertmanager` (nome gerenciado pelo Helm).
+**Fix**: Verificar nome do secret: `kubectl get secret -n monitoring | grep alertmanager`. O template `alertmanager-config.yaml` ja usa o nome correto.
 
-### 1. Substituir sed por Kustomize
+### Logs nao aparecem no dashboard
+**Erro**: Paineis de log mostram "No data" ou "Datasource not found".
+**Causa**: O UID do datasource Loki e aleatorio por instalacao do Grafana.
+**Fix**: O `install-monitoring.sh` resolve o UID dinamicamente. Se falhar, editar o painel no Grafana e selecionar o datasource Loki manualmente.
 
-Atualmente o `setup-full.sh` usa `sed` para substituir placeholders nos deployment.yaml. Isso e fragil e causa o problema do `InvalidImageName`.
-
-**Melhor abordagem**: Usar Kustomize overlays com patches por ambiente. ArgoCD tem suporte nativo.
-
-### 2. Criar secrets antes do setup
-
-Os secrets manuais (New Relic, PagerDuty, Discord) devem ser preparados ANTES de rodar o setup. O script agora aplica automaticamente se os arquivos existirem.
-
-### 3. Considerar replicas no planejamento de capacidade
-
-Sempre calcular o numero total de pods ANTES de definir o tamanho do cluster. Formula:
-```
-Nodes necessarios = ceil(Total_Pods / Max_Pods_por_Node)
-```
+### Metricas HTTP mostram "No data"
+**Erro**: Paineis de Request Rate, Error Rate, Latency vazios.
+**Causa**: As metricas do OTel nao possuem label `namespace` (chegam via remote write). Go e Python usam nomes de metricas diferentes.
+**Fix**: O dashboard usa queries sem filtro de namespace e inclui ambas metricas (Go: `http_server_request_duration_seconds`, Python: `http_server_duration_milliseconds`). Ja configurado.
