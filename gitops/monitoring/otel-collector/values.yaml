@@ -81,10 +81,10 @@ config:
     otlphttp/loki:
       endpoint: "http://loki.monitoring.svc.cluster.local:3100/otlp"
 
-    # OTLP exporter (traces -> New Relic)
-    # New Relic OTLP endpoint - API key injected via env var
-    otlp/newrelic:
-      endpoint: "https://otlp.nr-data.net:4317"
+    # OTLP HTTP exporter (traces + metrics -> New Relic)
+    # Using HTTP/protobuf instead of gRPC for reliability
+    otlphttp/newrelic:
+      endpoint: "https://otlp.nr-data.net"
       headers:
         api-key: "${NEW_RELIC_LICENSE_KEY}"
 
@@ -103,13 +103,14 @@ config:
       traces:
         receivers: [otlp]
         processors: [memory_limiter, resource, batch]
-        exporters: [otlp/newrelic, debug]
+        exporters: [otlphttp/newrelic, debug]
 
-      # Metrics pipeline: apps -> OTel -> Prometheus
+      # Metrics pipeline: apps -> OTel -> Prometheus + New Relic
+      # New Relic needs metrics too for Service Map to work
       metrics:
         receivers: [otlp]
         processors: [memory_limiter, resource, batch]
-        exporters: [prometheusremotewrite, debug]
+        exporters: [prometheusremotewrite, otlphttp/newrelic, debug]
 
       # Logs pipeline: apps -> OTel -> Loki
       logs:
