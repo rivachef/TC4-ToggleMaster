@@ -126,6 +126,17 @@ if grep -q '<GITHUB_USER>' "$ARGOCD_FILE" 2>/dev/null; then
   sed -i.bak "s|<GITHUB_USER>|$GITHUB_USER|g" "$ARGOCD_FILE" && rm -f "$ARGOCD_FILE.bak"
   echo "    [OK] argocd/applications.yaml atualizado"
 fi
+
+# Commit e push dos manifestos atualizados para que ArgoCD sincronize corretamente
+echo "  Commitando manifestos atualizados no git..."
+git -C "$PROJECT_DIR" add gitops/*/deployment.yaml argocd/applications.yaml 2>/dev/null
+if ! git -C "$PROJECT_DIR" diff --cached --quiet 2>/dev/null; then
+  git -C "$PROJECT_DIR" commit -m "Update manifests with AWS account $ACCOUNT_ID and GitHub user $GITHUB_USER" --quiet
+  git -C "$PROJECT_DIR" push --quiet 2>/dev/null || echo "    [AVISO] git push falhou — faca push manualmente antes do ArgoCD sync"
+  echo "    [OK] Manifestos commitados e enviados ao repositorio"
+else
+  echo "    Manifestos ja estavam atualizados no git"
+fi
 echo ""
 
 # Login no ECR
