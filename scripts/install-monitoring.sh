@@ -72,10 +72,23 @@ echo "============================================"
 echo ""
 
 # -------------------------------------------------------
+# Post-install: Apply Alertmanager custom config
+# MUST be after Helm install so the secret overrides Helm's default
+# -------------------------------------------------------
+echo "Applying Alertmanager custom configuration..."
+ALERTING_DIR="$MONITORING_DIR/alerting"
+AM_SECRET_FILE="$ALERTING_DIR/alertmanager-secret.yaml"
+if [ -f "$AM_SECRET_FILE" ]; then
+  kubectl apply --server-side --force-conflicts -f "$AM_SECRET_FILE"
+  echo "  [OK] Alertmanager config applied (PagerDuty + Discord + Self-Healing)"
+else
+  echo "  [AVISO] $AM_SECRET_FILE not found — alerting not configured"
+fi
+
+# -------------------------------------------------------
 # Post-install: Apply PrometheusRules (custom alert rules)
 # -------------------------------------------------------
 echo "Applying ToggleMaster alert rules..."
-ALERTING_DIR="$MONITORING_DIR/alerting"
 if [ -f "$ALERTING_DIR/prometheus-rules.yaml" ]; then
   kubectl apply -f "$ALERTING_DIR/prometheus-rules.yaml"
   echo "  [OK] PrometheusRules applied"

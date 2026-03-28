@@ -220,15 +220,8 @@ else
   echo "    cp gitops/monitoring/newrelic-secret.yaml.example gitops/monitoring/newrelic-secret.yaml"
 fi
 
-AM_SECRET_FILE="$PROJECT_DIR/gitops/monitoring/alerting/alertmanager-secret.yaml"
-if [ -f "$AM_SECRET_FILE" ]; then
-  kubectl apply -f "$AM_SECRET_FILE"
-  echo "  [OK] Alertmanager secret aplicado"
-else
-  echo "  [AVISO] $AM_SECRET_FILE nao encontrado — alerting nao configurado."
-  echo "    cp gitops/monitoring/alerting/alertmanager-config.yaml gitops/monitoring/alerting/alertmanager-secret.yaml"
-  echo "    # Preencha PAGERDUTY_INTEGRATION_KEY, DISCORD_WEBHOOK_URL e GITHUB_PAT_TOKEN"
-fi
+# NOTE: Alertmanager secret is applied INSIDE install-monitoring.sh (AFTER Helm install)
+# Applying it here would be overwritten by Helm in step 10
 echo ""
 
 ###############################################################################
