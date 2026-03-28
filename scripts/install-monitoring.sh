@@ -85,13 +85,42 @@ fi
 # Post-install: Load Grafana Dashboard
 # -------------------------------------------------------
 echo "Loading ToggleMaster Grafana dashboard..."
+
+# Resolve Loki datasource UID dynamically (Grafana assigns random UIDs per install)
+echo "  Waiting for Grafana to be ready..."
+kubectl rollout status deployment/prometheus-grafana -n monitoring --timeout=120s >/dev/null 2>&1
+
+GRAFANA_POD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].metadata.name}')
+LOKI_UID=""
+for i in $(seq 1 12); do
+  LOKI_UID=$(kubectl exec -n monitoring "$GRAFANA_POD" -c grafana -- \
+    curl -sf http://localhost:3000/api/datasources -u admin:togglemaster2024 2>/dev/null | \
+    python3 -c "import sys,json; ds=json.load(sys.stdin); print(next((d['uid'] for d in ds if d['type']=='loki'),''))" 2>/dev/null)
+  [ -n "$LOKI_UID" ] && break
+  echo "  Waiting for Loki datasource... (${i}/12)"
+  sleep 5
+done
+
+if [ -z "$LOKI_UID" ]; then
+  echo "  [AVISO] Loki datasource UID not found — log panels may not work."
+  echo "    Fix manually: Grafana > Dashboard > Edit panel > change datasource to Loki"
+  LOKI_UID="loki"
+fi
+echo "  Loki datasource UID: $LOKI_UID"
+
+# Replace placeholder in dashboard JSON and load as ConfigMap
+DASHBOARD_TMP=$(mktemp)
+sed "s|<LOKI_DS_UID>|$LOKI_UID|g" "$MONITORING_DIR/grafana/dashboards/togglemaster-overview.json" > "$DASHBOARD_TMP"
+
 kubectl create configmap togglemaster-dashboard \
-  --from-file=togglemaster-overview.json="$MONITORING_DIR/grafana/dashboards/togglemaster-overview.json" \
+  --from-file=togglemaster-overview.json="$DASHBOARD_TMP" \
   --namespace monitoring \
   --dry-run=client -o yaml | \
   kubectl label --local -f - grafana_dashboard=1 -o yaml | \
   kubectl annotate --local -f - grafana_folder=ToggleMaster -o yaml | \
   kubectl apply -f -
+
+rm -f "$DASHBOARD_TMP"
 
 echo ""
 echo "--- Access Information ---"
