@@ -72,6 +72,16 @@ echo "============================================"
 echo ""
 
 # -------------------------------------------------------
+# Post-install: Apply PrometheusRules (custom alert rules)
+# -------------------------------------------------------
+echo "Applying ToggleMaster alert rules..."
+ALERTING_DIR="$MONITORING_DIR/alerting"
+if [ -f "$ALERTING_DIR/prometheus-rules.yaml" ]; then
+  kubectl apply -f "$ALERTING_DIR/prometheus-rules.yaml"
+  echo "  [OK] PrometheusRules applied"
+fi
+
+# -------------------------------------------------------
 # Post-install: Load Grafana Dashboard
 # -------------------------------------------------------
 echo "Loading ToggleMaster Grafana dashboard..."
