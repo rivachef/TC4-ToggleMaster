@@ -110,8 +110,8 @@
       },
       "targets": [
         {
-          "expr": "avg(1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) by (instance))",
-          "legendFormat": "Cluster Avg"
+          "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) by (instance)",
+          "legendFormat": "{{ instance }}"
         }
       ]
     },
@@ -135,8 +135,8 @@
       },
       "targets": [
         {
-          "expr": "avg(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes))",
-          "legendFormat": "Cluster Avg"
+          "expr": "1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
+          "legendFormat": "{{ instance }}"
         }
       ]
     },
