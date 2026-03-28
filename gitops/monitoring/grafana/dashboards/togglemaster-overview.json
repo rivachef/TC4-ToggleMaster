@@ -284,7 +284,7 @@
     {
       "title": "ToggleMaster Logs (Live)",
       "type": "logs",
-      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "datasource": { "type": "loki", "uid": "<LOKI_DS_UID>" },
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 31 },
       "options": {
         "showTime": true,
@@ -307,7 +307,7 @@
     {
       "title": "Error Logs Only",
       "type": "logs",
-      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
+      "datasource": { "type": "loki", "uid": "<LOKI_DS_UID>" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 41 },
       "options": {
         "showTime": true,
