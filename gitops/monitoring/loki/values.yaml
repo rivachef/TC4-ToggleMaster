@@ -40,8 +40,13 @@ singleBinary:
       cpu: 300m
       memory: 512Mi
   persistence:
-    enabled: true
-    size: 10Gi
+    enabled: false
+  extraVolumes:
+    - name: data
+      emptyDir: {}
+  extraVolumeMounts:
+    - name: data
+      mountPath: /var/loki
 
 # Disable components not needed in single-binary mode
 backend:

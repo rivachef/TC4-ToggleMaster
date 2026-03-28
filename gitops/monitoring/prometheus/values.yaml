@@ -65,14 +65,8 @@ prometheus:
         cpu: 500m
         memory: 1Gi
 
-    # Storage
-    storageSpec:
-      volumeClaimTemplate:
-        spec:
-          accessModes: ["ReadWriteOnce"]
-          resources:
-            requests:
-              storage: 10Gi
+    # Storage (emptyDir - AWS Academy does not support IRSA/EBS CSI)
+    storageSpec: {}
 
     # Enable remote write receiver for OTel Collector
     enableRemoteWriteReceiver: true
