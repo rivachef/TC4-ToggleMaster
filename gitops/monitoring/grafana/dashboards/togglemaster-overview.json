@@ -173,8 +173,14 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(http_server_request_duration_seconds_count{namespace=\"togglemaster\"}[5m])) by (service_name)",
-          "legendFormat": "{{ service_name }}"
+          "expr": "sum(rate(http_server_request_duration_seconds_count[5m])) by (service_name)",
+          "legendFormat": "{{ service_name }}",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(http_server_duration_milliseconds_count[5m])) by (service_name)",
+          "legendFormat": "{{ service_name }}",
+          "refId": "B"
         }
       ]
     },
@@ -201,8 +207,14 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(http_server_request_duration_seconds_count{namespace=\"togglemaster\", http_response_status_code=~\"5..\"}[5m])) by (service_name) / sum(rate(http_server_request_duration_seconds_count{namespace=\"togglemaster\"}[5m])) by (service_name)",
-          "legendFormat": "{{ service_name }}"
+          "expr": "sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~\"5..\"}[5m])) by (service_name) / sum(rate(http_server_request_duration_seconds_count[5m])) by (service_name)",
+          "legendFormat": "{{ service_name }} (Go)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(http_server_duration_milliseconds_count{http_status_code=~\"5..\"}[5m])) by (service_name) / sum(rate(http_server_duration_milliseconds_count[5m])) by (service_name)",
+          "legendFormat": "{{ service_name }} (Python)",
+          "refId": "B"
         }
       ]
     },
@@ -223,8 +235,14 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket{namespace=\"togglemaster\"}[5m])) by (le, service_name))",
-          "legendFormat": "{{ service_name }}"
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le, service_name))",
+          "legendFormat": "{{ service_name }}",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(http_server_duration_milliseconds_bucket[5m])) by (le, service_name)) / 1000",
+          "legendFormat": "{{ service_name }}",
+          "refId": "B"
         }
       ]
     },
@@ -264,7 +282,7 @@
     {
       "title": "ToggleMaster Logs (Live)",
       "type": "logs",
-      "datasource": { "type": "loki", "uid": "loki" },
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 31 },
       "options": {
         "showTime": true,
@@ -278,7 +296,7 @@
       },
       "targets": [
         {
-          "expr": "{namespace=\"togglemaster\"}",
+          "expr": "{namespace=\"togglemaster\"} | line_format \"{{.pod}} {{.stream}}: {{__line__}}\"",
           "legendFormat": "",
           "refId": "A"
         }
@@ -287,7 +305,7 @@
     {
       "title": "Error Logs Only",
       "type": "logs",
-      "datasource": { "type": "loki", "uid": "loki" },
+      "datasource": { "type": "loki", "uid": "P8E80F9AEF21F6940" },
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 41 },
       "options": {
         "showTime": true,
@@ -313,5 +331,5 @@
   "timezone": "browser",
   "title": "ToggleMaster - Ecosystem Health",
   "uid": "togglemaster-overview",
-  "version": 1
+  "version": 2
 }
