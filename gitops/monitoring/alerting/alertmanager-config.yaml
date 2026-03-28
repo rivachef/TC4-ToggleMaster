@@ -35,7 +35,12 @@ stringData:
             alertname: Watchdog
           receiver: 'null'
 
-        # Critical alerts -> PagerDuty + Discord
+        # Silence KubeControllerManagerDown (expected on managed EKS)
+        - match:
+            alertname: KubeControllerManagerDown
+          receiver: 'null'
+
+        # Critical alerts -> PagerDuty + Discord + Self-Healing
         - match:
             severity: critical
           receiver: 'togglemaster-critical'
@@ -81,6 +86,15 @@ stringData:
               *Summary:* {{ .Annotations.summary }}
               *Description:* {{ .Annotations.description }}
               {{ end }}
+        webhook_configs:
+          # Self-Healing webhook (GitHub Actions repository_dispatch)
+          - url: 'https://api.github.com/repos/<GITHUB_USER>/TC4-ToggleMaster/dispatches'
+            http_config:
+              authorization:
+                type: Bearer
+                credentials: '<GITHUB_PAT_TOKEN>'
+            send_resolved: false
+            max_alerts: 1
 
       - name: 'togglemaster-warning'
         slack_configs:
