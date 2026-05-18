@@ -77,7 +77,7 @@ echo ""
 
 # Atualizar o secret do evaluation-service via kubectl patch
 echo ">>> Atualizando evaluation-service-secret com a nova API key..."
-API_KEY_B64=$(echo -n "$API_KEY" | base64)
+API_KEY_B64=$(echo -n "$API_KEY" | base64 | tr -d '\n')
 
 kubectl patch secret evaluation-service-secret -n togglemaster \
   -p "{\"data\":{\"SERVICE_API_KEY\":\"$API_KEY_B64\"}}"
